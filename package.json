@@ -7,11 +7,15 @@
     "dev": "vite",
     "dev:vite": "vite",
     "dev:next": "next dev",
-    "build": "tsc -b && vite build",
+    "build": "npm run typecheck:legacy && npm run typecheck:node && vite build",
     "build:vite": "vite build",
     "build:next": "next build",
     "start:next": "next start",
     "lint": "eslint .",
+    "typecheck:next": "next typegen && tsc --noEmit -p tsconfig.json",
+    "typecheck:legacy": "tsc --noEmit -p tsconfig.legacy.json",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck": "npm run typecheck:next && npm run typecheck:legacy && npm run typecheck:node",
     "preview": "vite preview"
   },
   "dependencies": {
