@@ -62,34 +62,38 @@ const SKIP_NAV_LINKS = EXPECTED_ROUTES;
 
 const ROUTE_EXPECTATIONS = {
   "/": {
-    heading: "Next migration shell",
-    markers: ["Next migration shell"],
-    mainTarget: false,
+    heading: "TUC",
+    markers: [
+      "Welcome To",
+      "👉 Click anything that makes you curious.",
+      "What is TUC?",
+      "2% Spare Bandwidth",
+      "Top10 Lists",
+      "CloserLook@",
+      "The resources we need already exist.",
+      "Submit a Suggestion",
+      "Another App?",
+    ],
   },
   "/black-hand": {
     heading: "WHAT IS TUC?",
     markers: ["What if we stopped starting over?"],
-    mainTarget: true,
   },
   "/earth-globe": {
     heading: "THE RESOURCES WE NEED ALREADY EXIST",
     markers: ["THE RESOURCES WE NEED ALREADY EXIST"],
-    mainTarget: true,
   },
   "/yellow-sticky-note": {
     heading: "2% SPARE BANDWIDTH",
     markers: ["2% SPARE BANDWIDTH"],
-    mainTarget: true,
   },
   "/red-flag": {
     heading: "Red Flags",
     markers: ["Red Flags"],
-    mainTarget: true,
   },
   "/crumpled-paper": {
     heading: "Another App?",
     markers: ["Another App?"],
-    mainTarget: true,
   },
   "/closerlook": {
     heading: "CloserLook@",
@@ -105,12 +109,10 @@ const ROUTE_EXPECTATIONS = {
       "Founder’s Notes",
       "This workspace stays open until you close it.",
     ],
-    mainTarget: true,
   },
   "/top10-poc": {
     heading: "Top10: Ways to Engage in TUC",
     markers: ["Choose an OpenItem You Can Help Complete"],
-    mainTarget: true,
   },
   "/open-items": {
     heading: "OpenItems",
@@ -120,7 +122,6 @@ const ROUTE_EXPECTATIONS = {
       "TUC-SB-0005",
       "Open / In follow-through",
     ],
-    mainTarget: true,
   },
   "/survey-poc": {
     heading: "WTF is TUC?",
@@ -136,13 +137,39 @@ const ROUTE_EXPECTATIONS = {
       "SUBMIT MY TWO CENTS!",
       "Thanks for helping TUC get better!",
     ],
-    mainTarget: true,
   },
 };
 
 const OPEN_ITEMS_FORM_URL =
   "https://docs.google.com/forms/d/e/1FAIpQLSfAliHmLu4qnbGVGoNC_YRnnqGPL-RXKjAlM2SE9ky4bVLl4A/viewform";
 const TOP10_FORM_URL = `${OPEN_ITEMS_FORM_URL}?usp=dialog`;
+
+// The landing page uses the same Google Form as the Top10 suggestion control.
+const LANDING_CONTROLS_DESKTOP = [
+  { tag: "A", href: "/black-hand", label: "What is TUC?" },
+  { tag: "A", href: "/yellow-sticky-note", label: "2% Spare Bandwidth" },
+  { tag: "A", href: "/top10-poc", label: "Navigate to Top10 Lists" },
+  { tag: "BUTTON", href: null, label: "Open Welcome to TUC" },
+  { tag: "A", href: "/survey-poc", label: "Take TUC Survey" },
+  { tag: "A", href: "/closerlook", label: "Navigate to CloserLook Workspace" },
+  { tag: "A", href: "/red-flag", label: "Red Flag Overview" },
+  { tag: "A", href: "/earth-globe", label: "Earth Globe Overview" },
+  { tag: "A", href: TOP10_FORM_URL, label: "Submit a Suggestion" },
+  { tag: "A", href: "/crumpled-paper", label: "Another App?" },
+];
+
+const LANDING_CONTROLS_MOBILE = [
+  { tag: "BUTTON", href: null, label: "Open Welcome to TUC" },
+  { tag: "A", href: "/survey-poc", label: "Take TUC Survey" },
+  { tag: "A", href: "/black-hand", label: "What is TUC?" },
+  { tag: "A", href: "/earth-globe", label: "Earth Globe Overview" },
+  { tag: "A", href: "/yellow-sticky-note", label: "2% Spare Bandwidth" },
+  { tag: "A", href: "/red-flag", label: "Red Flag Overview" },
+  { tag: "A", href: "/crumpled-paper", label: "Another App?" },
+  { tag: "A", href: "/top10-poc", label: "Navigate to Top10 Lists" },
+  { tag: "A", href: TOP10_FORM_URL, label: "Submit a Suggestion" },
+  { tag: "A", href: "/closerlook", label: "Navigate to CloserLook Workspace" },
+];
 
 const CLOSERLOOK_DOC_URLS = [
   "https://docs.google.com/document/d/1b_pysDmZdCqtHms3-nme4h7JmlU7wvDWUNtAo36qU3k/edit?usp=sharing",
@@ -739,7 +766,7 @@ async function run() {
     page.on("Network.loadingFailed", (params) => {
       if (params.canceled || params.errorText === "net::ERR_ABORTED") return;
       const url = requestUrls.get(params.requestId) || "";
-      if (isIgnorableUrl(url)) return;
+      if (isIgnorableUrl(url) || isIgnorableRemoteAsset(url)) return;
       failedRequests.push({
         phase: currentPhase,
         source: "request",
@@ -749,7 +776,7 @@ async function run() {
     page.on("Network.responseReceived", (params) => {
       const { response, type } = params;
       if (!response || response.status < 400) return;
-      if (isIgnorableUrl(response.url)) return;
+      if (isIgnorableUrl(response.url) || isIgnorableRemoteAsset(response.url)) return;
       if (!response.url.startsWith(baseUrl)) return;
       failedRequests.push({
         phase: currentPhase,
@@ -809,6 +836,16 @@ async function run() {
     const goto = async (route) => {
       await page.send("Page.navigate", { url: `${baseUrl}${route}` });
       await waitForLoad();
+    };
+
+    const gotoRaw = async (route) => {
+      await page.send("Page.navigate", { url: `${baseUrl}${route}` });
+      await waitFor(
+        async () => (await evaluate("document.readyState")) === "complete",
+        "document readyState=complete",
+        15000
+      );
+      await sleep(600);
     };
 
     const currentPath = () => evaluate("location.pathname");
@@ -1084,43 +1121,40 @@ async function run() {
           return el ? { id: el.id, tabIndex: el.tabIndex } : null;
         })()`);
         assert(main, "no <main> element found");
-        if (!expectation.mainTarget) return "main present (smoke page has no target yet)";
         assert(main.id === "main-content", `main id is ${JSON.stringify(main.id)}`);
         assert(main.tabIndex === -1, `main tabIndex is ${main.tabIndex}`);
         return "main#main-content with tabIndex=-1";
       });
 
-      if (route !== "/") {
-        await check(`${route} skip navigation`, async () => {
-          const nav = await evaluate(`(() => {
-            const nav = document.querySelector('nav[aria-label="TUC sections"]');
-            if (!nav) return null;
-            return {
-              anchors: [...nav.querySelectorAll("a")].map((a) => ({
-                href: a.getAttribute("href"),
-                current: a.getAttribute("aria-current")
-              }))
-            };
-          })()`);
-          assert(nav, "skip navigation is missing");
-          const skipLink = nav.anchors[0];
-          assert(
-            skipLink?.href === "#main-content",
-            `first skip link is ${JSON.stringify(skipLink?.href)}`
-          );
-          const routeLinks = nav.anchors.slice(1).map((anchor) => anchor.href);
-          assert(
-            JSON.stringify(routeLinks) === JSON.stringify(SKIP_NAV_LINKS),
-            `skip links are ${JSON.stringify(routeLinks)}, expected ${JSON.stringify(SKIP_NAV_LINKS)}`
-          );
-          const current = nav.anchors.filter((anchor) => anchor.current === "page");
-          assert(
-            current.length === 1 && current[0].href === route,
-            `aria-current="page" is on ${JSON.stringify(current.map((a) => a.href))}`
-          );
-          return `${routeLinks.length} route links + skip target, current=${route}`;
-        });
-      }
+      await check(`${route} skip navigation`, async () => {
+        const nav = await evaluate(`(() => {
+          const nav = document.querySelector('nav[aria-label="TUC sections"]');
+          if (!nav) return null;
+          return {
+            anchors: [...nav.querySelectorAll("a")].map((a) => ({
+              href: a.getAttribute("href"),
+              current: a.getAttribute("aria-current")
+            }))
+          };
+        })()`);
+        assert(nav, "skip navigation is missing");
+        const skipLink = nav.anchors[0];
+        assert(
+          skipLink?.href === "#main-content",
+          `first skip link is ${JSON.stringify(skipLink?.href)}`
+        );
+        const routeLinks = nav.anchors.slice(1).map((anchor) => anchor.href);
+        assert(
+          JSON.stringify(routeLinks) === JSON.stringify(SKIP_NAV_LINKS),
+          `skip links are ${JSON.stringify(routeLinks)}, expected ${JSON.stringify(SKIP_NAV_LINKS)}`
+        );
+        const current = nav.anchors.filter((anchor) => anchor.current === "page");
+        assert(
+          current.length === 1 && current[0].href === route,
+          `aria-current="page" is on ${JSON.stringify(current.map((a) => a.href))}`
+        );
+        return `${routeLinks.length} route links + skip target, current=${route}`;
+      });
     }
 
     console.log("\nConcept CTA chain");
@@ -2206,10 +2240,391 @@ async function run() {
     appsScriptControl.mode = "block";
     await page.send("Fetch.disable").catch(() => {});
 
+    console.log("\nLanding page checks");
+    currentPhase = "landing";
+    await page.send("Emulation.setDeviceMetricsOverride", {
+      width: 1440,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await goto("/");
+
+    const landingControls = () =>
+      evaluate(`(() => {
+        const norm = (value) => (value || "").replace(/\\s+/g, " ").trim();
+        return [...document.querySelectorAll("main a, main button")]
+          .filter((el) => {
+            const rect = el.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return false;
+            return getComputedStyle(el).visibility !== "hidden";
+          })
+          .map((el) => ({
+            tag: el.tagName,
+            href: el.getAttribute("href"),
+            label: el.getAttribute("aria-label"),
+            target: el.getAttribute("target"),
+            rel: el.getAttribute("rel"),
+            text: norm(el.textContent)
+          }));
+      })()`);
+
+    const summarizeControls = (items) =>
+      items.map(({ tag, href, label }) => ({ tag, href, label }));
+
+    const clickLandingControl = (label) =>
+      trustedClick(
+        `(() => {
+          return [...document.querySelectorAll("main a, main button")].find((el) =>
+            el.getAttribute("aria-label") === ${JSON.stringify(label)} &&
+            el.getBoundingClientRect().width > 0
+          ) || null;
+        })()`
+      );
+
+    const landingLayouts = () =>
+      evaluate(`(() => {
+        const main = document.querySelector("main");
+        return [...main.children]
+          .filter((el) => el.tagName === "DIV")
+          .map((el) => ({ display: getComputedStyle(el).display, hidden: el.getBoundingClientRect().height === 0 }));
+      })()`);
+
+    const openWelcome = async () => {
+      await clickLandingControl("Open Welcome to TUC");
+      await waitFor(
+        async () => await evaluate(`!!document.querySelector('[role="dialog"]')`),
+        "welcome dialog"
+      );
+    };
+
+    const welcomeState = () =>
+      evaluate(`(() => {
+        const norm = (value) => (value || "").replace(/\\s+/g, " ").trim();
+        const dialog = document.querySelector('[role="dialog"]');
+        const main = document.querySelector("main");
+        const style = main ? getComputedStyle(main) : null;
+        return {
+          role: dialog?.getAttribute("role") ?? null,
+          modal: dialog?.getAttribute("aria-modal") ?? null,
+          labelledby: dialog?.getAttribute("aria-labelledby") ?? null,
+          title: norm(dialog?.querySelector("h1")?.textContent),
+          text: norm(dialog?.innerText),
+          controls: dialog
+            ? [...dialog.querySelectorAll("button")].map(
+                (button) => button.getAttribute("aria-label") || norm(button.textContent)
+              )
+            : [],
+          focusInsideDialog: dialog ? dialog.contains(document.activeElement) : null,
+          marginRight: style?.marginRight ?? null,
+          opacity: style?.opacity ?? null
+        };
+      })()`);
+
+    const welcomeClosed = () =>
+      waitFor(
+        async () => !(await evaluate(`!!document.querySelector('[role="dialog"]')`)),
+        "welcome dialog to close"
+      );
+
+    await check("Landing renders the legacy content and no smoke shell", async () => {
+      const text = (await bodyText()).toLowerCase();
+      for (const marker of [
+        "Welcome To",
+        "👉 Click anything that makes you curious.",
+        "What is TUC?",
+        "2% Spare Bandwidth",
+        "Top10 Lists",
+        "CloserLook@",
+        "The resources we need already exist.",
+        "Submit a Suggestion",
+        "Another App?",
+        "ANOTHER APP?",
+      ]) {
+        assert(
+          text.includes(marker.toLowerCase()),
+          `landing page is missing ${JSON.stringify(marker)}`
+        );
+      }
+      assert(!text.includes("next migration shell"), "landing page still contains the smoke shell");
+      assert(
+        !(await evaluate(`document.documentElement.innerHTML.includes("Next migration shell")`)),
+        "smoke shell markup is still present"
+      );
+      const headings = await evaluate(
+        `[...document.querySelectorAll("main h1")].filter((el) => el.getBoundingClientRect().height > 0).length`
+      );
+      assert(headings === 1, `expected one visible h1, got ${headings}`);
+      return "legacy copy, single visible h1";
+    });
+
+    await check("Landing desktop CTA map matches the legacy layout", async () => {
+      const controls = await landingControls();
+      assert(
+        JSON.stringify(summarizeControls(controls)) === JSON.stringify(LANDING_CONTROLS_DESKTOP),
+        `desktop controls are ${JSON.stringify(summarizeControls(controls))}`
+      );
+      const external = controls.find((item) => item.href === TOP10_FORM_URL);
+      assert(external, "suggestion form link is missing");
+      assert(external.target === "_blank", `suggestion target is ${JSON.stringify(external.target)}`);
+      assert(
+        /noopener/.test(external.rel) && /noreferrer/.test(external.rel),
+        `suggestion rel is ${JSON.stringify(external.rel)}`
+      );
+      const layouts = await landingLayouts();
+      assert(
+        layouts.filter((layout) => !layout.hidden).length === 1,
+        `expected one visible layout, got ${JSON.stringify(layouts)}`
+      );
+      return `${controls.length} controls, safe external link, one layout`;
+    });
+
+    await check("Landing skip link is the first tab stop and targets main", async () => {
+      await goto("/");
+      await pressKey("Tab", "Tab", 9);
+      const first = await evaluate(`(() => {
+        const active = document.activeElement;
+        const nav = document.querySelector('nav[aria-label="TUC sections"]');
+        const rect = nav?.getBoundingClientRect();
+        return {
+          tag: active?.tagName ?? null,
+          href: active?.getAttribute?.("href") ?? null,
+          navVisible: !!rect && rect.width > 0 && rect.height > 0
+        };
+      })()`);
+      assert(first.tag === "A", `first Tab focus is ${first.tag}, expected the skip link`);
+      assert(first.href === "#main-content", `first Tab href is ${JSON.stringify(first.href)}`);
+      assert(first.navVisible, "skip navigation did not become visible when focused");
+      await pressKey("Enter", "Enter", 13, "\r");
+      await sleep(150);
+      assert(
+        (await evaluate("document.activeElement?.id ?? null")) === "main-content",
+        "Enter did not focus main#main-content"
+      );
+      return "Tab reveals nav, Enter focuses main#main-content";
+    });
+
+    await check("Landing internal links reach every legacy destination", async () => {
+      const routes = [
+        ["What is TUC?", "/black-hand"],
+        ["2% Spare Bandwidth", "/yellow-sticky-note"],
+        ["Navigate to Top10 Lists", "/top10-poc"],
+        ["Take TUC Survey", "/survey-poc"],
+        ["Navigate to CloserLook Workspace", "/closerlook"],
+        ["Red Flag Overview", "/red-flag"],
+        ["Earth Globe Overview", "/earth-globe"],
+        ["Another App?", "/crumpled-paper"],
+      ];
+      for (const [label, path] of routes) {
+        await goto("/");
+        await evaluate("window.scrollTo(0, 600)");
+        await clickLandingControl(label);
+        await waitForPath(path);
+        assert(
+          (await evaluate("window.scrollY")) === 0,
+          `${label} did not reset the scroll position`
+        );
+      }
+      return `${routes.length} destinations`;
+    });
+
+    await check("Welcome overlay opens with the legacy content and layout shift", async () => {
+      await goto("/");
+      await openWelcome();
+      const state = await welcomeState();
+      assert(state.role === "dialog", `dialog role is ${JSON.stringify(state.role)}`);
+      assert(state.modal === "true", `aria-modal is ${JSON.stringify(state.modal)}`);
+      assert(
+        state.labelledby === "welcome-title",
+        `aria-labelledby is ${JSON.stringify(state.labelledby)}`
+      );
+      assert(
+        state.title === "Welcome to TUC (The Ultimate Collaboration)",
+        `overlay title is ${JSON.stringify(state.title)}`
+      );
+      const text = state.text.toLowerCase();
+      for (const marker of [
+        "Enough is enough. It's time to do things differently.",
+        "We keep reinventing the wheel",
+        'It\'s time to reimagine "Think Globally, Act Locally"',
+        "TUC is being built to increase the efficacy",
+        "TUC is a global effort to be the change we want to see",
+        "The idea is ambitious. The possibilities are enormous. And we're just getting started.",
+      ]) {
+        assert(text.includes(marker.toLowerCase()), `overlay is missing ${JSON.stringify(marker)}`);
+      }
+      assert(
+        JSON.stringify(state.controls) ===
+          JSON.stringify([
+            "Back to TUC landing page",
+            "Close welcome overlay",
+            "Back",
+            "Explore the Idea",
+          ]),
+        `overlay controls are ${JSON.stringify(state.controls)}`
+      );
+      assert(state.marginRight === "400px", `main margin-right is ${JSON.stringify(state.marginRight)}`);
+      assert(state.opacity === "1", `main opacity is ${JSON.stringify(state.opacity)}`);
+      assert(state.focusInsideDialog === false, "focus was moved into the dialog");
+      return "dialog semantics, copy, controls, xl layout shift, no focus move";
+    });
+
+    await check("Welcome overlay closes through every legacy control", async () => {
+      await trustedClick(
+        `document.querySelector('[role="dialog"] button[aria-label="Back to TUC landing page"]')`
+      );
+      await welcomeClosed();
+
+      await openWelcome();
+      await trustedClick(
+        `document.querySelector('[role="dialog"] button[aria-label="Close welcome overlay"]')`
+      );
+      await welcomeClosed();
+
+      await openWelcome();
+      await trustedClick(`(() => {
+        const buttons = [...document.querySelectorAll('[role="dialog"] button')].filter(
+          (button) => button.textContent.replace(/\\s+/g, " ").trim() === "Back"
+        );
+        return buttons[buttons.length - 1];
+      })()`);
+      await welcomeClosed();
+      return "header Back, close icon, footer Back";
+    });
+
+    await check("Welcome overlay preserves the legacy Escape and focus behavior", async () => {
+      await openWelcome();
+      const before = await welcomeState();
+      assert(before.focusInsideDialog === false, "focus was moved into the dialog");
+      await pressKey("Escape", "Escape", 27);
+      await sleep(300);
+      assert(
+        await evaluate(`!!document.querySelector('[role="dialog"]')`),
+        "Escape closed the dialog, but the legacy overlay ignores Escape"
+      );
+      return "Escape does not close, focus is not managed";
+    });
+
+    await check("Welcome overlay Explore the Idea opens the Black Hand route", async () => {
+      await trustedClick(`(() => {
+        const button = [...document.querySelectorAll('[role="dialog"] button')].find((item) =>
+          item.textContent.includes("Explore the Idea")
+        );
+        return button || null;
+      })()`);
+      await waitForPath("/black-hand");
+      await waitFor(
+        async () =>
+          await evaluate(`(() => {
+            const main = document.querySelector("main");
+            return !!main && main.innerText.includes("What if we stopped starting over?");
+          })()`),
+        "black hand content"
+      );
+      // The Black Hand page renders its own ConceptOverlay dialog by design, so
+      // assert that the Welcome overlay itself is unmounted rather than that no
+      // dialog element exists.
+      assert(
+        !(await evaluate(`!!document.querySelector("#welcome-title")`)),
+        "the Welcome overlay survived navigation"
+      );
+      assert(
+        await evaluate(`!!document.querySelector('[aria-labelledby="overlay-title"]')`),
+        "the Black Hand concept dialog did not render"
+      );
+      return "Explore the Idea → /black-hand, Welcome overlay unmounted";
+    });
+
+    await check("Landing mobile CTA map matches the legacy layout", async () => {
+      await page.send("Emulation.setDeviceMetricsOverride", {
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await goto("/");
+      const controls = await landingControls();
+      assert(
+        JSON.stringify(summarizeControls(controls)) === JSON.stringify(LANDING_CONTROLS_MOBILE),
+        `mobile controls are ${JSON.stringify(summarizeControls(controls))}`
+      );
+      const layouts = await landingLayouts();
+      const visible = layouts.filter((layout) => !layout.hidden);
+      assert(visible.length === 1, `expected one visible layout, got ${JSON.stringify(layouts)}`);
+      assert(visible[0].display === "flex", `mobile layout display is ${visible[0].display}`);
+      return `${controls.length} controls, mobile-only layout`;
+    });
+
+    await check("Landing mobile survey emoji navigates without leaving a dialog", async () => {
+      await clickLandingControl("Take TUC Survey");
+      await waitForPath("/survey-poc");
+      await waitFor(
+        async () => await evaluate(`!!document.querySelector("main#main-content h1")`),
+        "survey form"
+      );
+      assert(
+        !(await evaluate(`!!document.querySelector("#welcome-title")`)),
+        "the welcome overlay opened while navigating"
+      );
+      const form = await evaluate(`(() => {
+        const h1 = document.querySelector("main#main-content h1");
+        return {
+          heading: (h1?.textContent || "").replace(/\\s+/g, " ").trim(),
+          fields: document.querySelectorAll("main#main-content input, main#main-content textarea").length
+        };
+      })()`);
+      assert(
+        form.heading.startsWith("WTF is TUC?"),
+        `survey heading is ${JSON.stringify(form.heading)}`
+      );
+      assert(form.fields > 0, "survey form has no fields");
+      return `🙂 → /survey-poc, ${form.fields} fields, no Welcome overlay`;
+    });
+
+    await check("Unmatched routes render the legacy 404 with a real 404 status", async () => {
+      await page.send("Emulation.setDeviceMetricsOverride", {
+        width: 1440,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      const response = await fetch(`${baseUrl}/m11-missing-page`, {
+        signal: AbortSignal.timeout(15000),
+      });
+      assert(response.status === 404, `expected HTTP 404, got ${response.status}`);
+      await gotoRaw("/m11-missing-page");
+      await waitFor(
+        async () =>
+          (await evaluate(
+            `document.querySelector(".font-mono")?.textContent ?? null`
+          )) === "/m11-missing-page",
+        "404 pathname echo"
+      );
+      const text = (await bodyText()).toLowerCase();
+      for (const marker of [
+        "404",
+        "sorry, we couldn't find that page.",
+        "the page /m11-missing-page does not exist.",
+      ]) {
+        assert(text.includes(marker), `404 page is missing ${JSON.stringify(marker)}`);
+      }
+      assert(
+        await evaluate(`!!document.querySelector('meta[name="robots"][content="noindex"]')`),
+        "noindex meta is missing"
+      );
+      await trustedClick(
+        `[...document.querySelectorAll("a")].find((a) => a.textContent.trim() === "Go Home")`
+      );
+      await waitForPath("/");
+      return "404 status, copy, path echo, noindex, Go Home";
+    });
+
     console.log("\nResponsive checks");
     currentPhase = "responsive";
     for (const [width, height] of [
       [390, 844],
+      [768, 1024],
+      [1024, 768],
       [1440, 900],
     ]) {
       await page.send("Emulation.setDeviceMetricsOverride", {
@@ -2232,6 +2647,35 @@ async function run() {
           );
           return `${metrics.scrollWidth}/${metrics.clientWidth}px`;
         });
+
+        if (route === "/") {
+          await check(`/ layout isolation at ${width}x${height}`, async () => {
+            const layouts = await evaluate(`(() => {
+              const main = document.querySelector("main");
+              return [...main.children]
+                .filter((el) => el.tagName === "DIV")
+                .map((el) => ({ display: getComputedStyle(el).display }));
+            })()`);
+            const visible = layouts.filter((layout) => layout.display !== "none");
+            assert(
+              visible.length === 1,
+              `expected one visible layout, got ${JSON.stringify(layouts)}`
+            );
+            const expected = width >= 768 ? "grid" : "flex";
+            assert(
+              visible[0].display === expected,
+              `visible layout display is ${visible[0].display}, expected ${expected}`
+            );
+            const controls = await evaluate(
+              `[...document.querySelectorAll("main a, main button")].filter((el) => {
+                const rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+              }).length`
+            );
+            assert(controls === 10, `expected 10 visible controls, got ${controls}`);
+            return `one ${expected} layout, ${controls} controls`;
+          });
+        }
       }
     }
     await page.send("Emulation.clearDeviceMetricsOverride");
@@ -2242,6 +2686,33 @@ async function run() {
       const problems = [...runtimeErrors, ...failedRequests].filter((problem) => {
         if (isIgnorableUrl(problem.message)) {
           warnings.push(`Ignored known missing favicon request: ${problem.message}`);
+          return false;
+        }
+        if (isIgnorableRemoteAsset(problem.message)) {
+          if (
+            !warnings.some((warning) =>
+              warning.startsWith("Ignored a network failure for a known remote landing-page image")
+            )
+          ) {
+            warnings.push(
+              "Ignored a network failure for a known remote landing-page image (offline test environment)."
+            );
+          }
+          return false;
+        }
+        if (
+          problem.phase === "landing" &&
+          /m11-missing-page/.test(problem.message)
+        ) {
+          if (
+            !warnings.some((warning) =>
+              warning.startsWith("Ignored expected 404 from the intentional missing-page check")
+            )
+          ) {
+            warnings.push(
+              "Ignored expected 404 from the intentional missing-page check during the landing phase."
+            );
+          }
           return false;
         }
         if (
@@ -2311,8 +2782,21 @@ async function run() {
   }
 }
 
+// The landing page renders two legacy remote images. If the verification
+// environment is offline, their load failures must not be reported as app
+// defects, but they are still surfaced as a warning.
+const KNOWN_REMOTE_ASSETS = [
+  "https://storage.googleapis.com/uxpilot-auth.appspot.com/gen_88f00ba619_7ca58802f2a328bf.png",
+  "https://storage.googleapis.com/uxpilot-auth.appspot.com/gen_e96766a1f9_a1482af51388d43e.png",
+];
+
 function isIgnorableUrl(value) {
   return /favicon\.ico/.test(String(value));
+}
+
+function isIgnorableRemoteAsset(value) {
+  const text = String(value);
+  return KNOWN_REMOTE_ASSETS.some((url) => text.includes(url));
 }
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
