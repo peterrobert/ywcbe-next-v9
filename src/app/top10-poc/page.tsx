@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,13 @@ const StaticTop10POC = () => {
     "Top10 Assumptions TUC Is Testing",
   ];
 
-  const engagementWays = [
+  const engagementWays: {
+    title: string;
+    availability: string;
+    priority: number;
+    href?: string;
+    remixes: string[];
+  }[] = [
     {
       title: "Make a Suggestion 💡",
       availability: "Active",
@@ -56,11 +63,10 @@ const StaticTop10POC = () => {
       ],
     },
     {
-      // `/open-items` is not migrated yet. Keep the card content but do not
-      // navigate to a 404. Re-enable the click when that route lands.
       title: "Choose an OpenItem You Can Help Complete ✅",
       availability: "Active",
       priority: 1,
+      href: "/open-items",
       remixes: [
         "Remix 1: Find where to access TUC's OpenItems list",
         "Remix 2: Try being an OpenItem reviewer",
@@ -267,14 +273,14 @@ const StaticTop10POC = () => {
                   .map((item, index) => {
                     // Calculate global index for numbering
                     const globalIndex = engagementWays.findIndex(ew => ew.title === item.title) + 1;
-                    return (
-                      <div key={index} className="space-y-4">
-                        <div className="flex items-start gap-4">
-                          <span className="text-2xl font-black text-muted-foreground/30 tabular-nums pt-0.5 shrink-0">
+                    const cardContent = (
+                      <>
+                        <div className="group flex items-start gap-4">
+                          <span className="text-2xl font-black text-muted-foreground/30 tabular-nums pt-0.5 shrink-0 group-hover/card:text-primary transition-colors">
                             {globalIndex.toString().padStart(2, '0')}
                           </span>
                           <div className="space-y-1">
-                            <h3 className="text-xl md:text-2xl font-bold tracking-tight leading-tight">
+                            <h3 className="text-xl md:text-2xl font-bold tracking-tight leading-tight group-hover/card:underline underline-offset-4 decoration-2 decoration-primary/30">
                               {item.title}
                             </h3>
                             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
@@ -292,6 +298,21 @@ const StaticTop10POC = () => {
                             </p>
                           ))}
                         </div>
+                      </>
+                    );
+
+                    return (
+                      <div key={index} className="space-y-4">
+                        {item.href ? (
+                          <Link
+                            href={item.href}
+                            className="block space-y-4 cursor-pointer group/card rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          >
+                            {cardContent}
+                          </Link>
+                        ) : (
+                          cardContent
+                        )}
                       </div>
                     );
                   })}

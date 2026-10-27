@@ -13,7 +13,9 @@ const links = [
   { href: "/yellow-sticky-note", label: "Yellow Sticky Note Overview" },
   { href: "/red-flag", label: "Red Flag Overview" },
   { href: "/crumpled-paper", label: "Crumpled Paper Overview" },
+  { href: "/closerlook", label: "CloserLook@ Workspace" },
   { href: "/top10-poc", label: "Top 10 Ways to Engage" },
+  { href: "/open-items", label: "OpenItems" },
 ];
 
 const TucSkipNav = () => {

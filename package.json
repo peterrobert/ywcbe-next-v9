@@ -16,7 +16,8 @@
     "typecheck:legacy": "tsc --noEmit -p tsconfig.legacy.json",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck": "npm run typecheck:next && npm run typecheck:legacy && npm run typecheck:node",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:migration": "node scripts/verify-migration.mjs"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
