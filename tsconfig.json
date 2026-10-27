@@ -31,17 +31,12 @@
   },
   "include": [
     "next-env.d.ts",
-    "src/app/**/*.ts",
-    "src/app/**/*.tsx",
-    "src/lib/**/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "src/legacy-pages",
-    "src/App.tsx",
-    "src/main.tsx",
-    "vite.config.ts"
+    "node_modules"
   ]
 }

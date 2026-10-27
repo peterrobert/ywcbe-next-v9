@@ -29,8 +29,8 @@ export const viewport: Viewport = {
 /**
  * UXPilot iframe bridge.
  *
- * This is intentionally identical in behavior to the script injected by
- * vite.config.ts: install a single message listener, validate the message
+ * Preserves the behavior of the bridge that previously lived in the Vite
+ * configuration: install a single message listener, validate the message
  * shape, and inject the parent-provided vh-fix payload only once.
  */
 const vhBridge = `(function(){

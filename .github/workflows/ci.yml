@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Lint, typecheck, builds, migration harness
+    name: Lint, typecheck, build, migration harness
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -45,9 +45,6 @@ jobs:
 
       - name: Build (Next.js)
         run: npm run build
-
-      - name: Build (legacy Vite)
-        run: npm run build:vite
 
       # The migration harness drives a real Chrome over CDP. GitHub-hosted
       # runners do not ship Chrome, so install it and pass the path explicitly.

@@ -1,8 +1,7 @@
 "use client";
 
-// Visually hidden but keyboard-accessible navigation used across migrated TUC
-// screens. Only working Next.js routes are listed here; the legacy Vite route
-// list remains in src/components/TucSkipNav.tsx.
+// Visually hidden but keyboard-accessible navigation used across TUC screens.
+// Only working Next.js routes are listed here.
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 

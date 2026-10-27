@@ -2,18 +2,20 @@
 
 TUC is a public-facing concept site that connects people, ideas, knowledge, and
 existing efforts. This repository contains the Next.js App Router implementation
-and the original Vite application, which is retained while the migration is
-completed and verified.
+and is now Next.js-only.
 
 ## Project status
 
 - The Vite → Next.js route migration is complete for all ten public routes plus
   the 404 page.
-- Next.js is now the default application for `dev`, `build`, and `start`.
-- The original Vite application remains in place and can still be run explicitly.
+- Next.js is the only application in the repository for `dev`, `build`, and
+  `start`.
+- The legacy Vite application, its pages, and its unused components have been
+  removed. The historical Vite repository remains available separately as the
+  pre-migration reference.
 - Deployment readiness for Vercel is implemented and verified locally.
-- Legacy decommissioning (removing Vite files, unused components, or dependency
-  cleanup) is a separate, not-yet-authorized milestone.
+- Legacy-only dependencies and build configuration have been removed, and only
+  the components and UI primitives used by the Next.js entry graph remain.
 
 ## Requirements
 
@@ -37,7 +39,7 @@ Then open http://localhost:3000.
 No environment variables, credentials, or external services are required to run
 the application or its checks.
 
-### Default (Next.js) commands
+### Commands
 
 | Command | Purpose |
 | --- | --- |
@@ -48,18 +50,6 @@ the application or its checks.
 | `npm run build:next` | Explicit alias for `next build` |
 | `npm run start:next` | Explicit alias for `next start` |
 
-### Legacy (Vite) commands
-
-The legacy application is still available locally and is not the deployment
-target.
-
-| Command | Purpose |
-| --- | --- |
-| `npm run dev:vite` | Start the Vite development server |
-| `npm run build:vite` | Build the legacy Vite application into `dist/` |
-| `npm run preview` | Preview the legacy Vite build (unchanged behavior) |
-| `npm run preview:vite` | Explicit alias for `vite preview` |
-
 ## Quality gates
 
 Run these before opening a pull request:
@@ -68,13 +58,12 @@ Run these before opening a pull request:
 npm run lint
 npm run typecheck
 npm run build
-npm run build:vite
 npm run verify:migration
 git diff --check
 ```
 
-`npm run typecheck` runs the Next.js type generation and all three TypeScript
-projects (`tsconfig.json`, `tsconfig.legacy.json`, `tsconfig.node.json`).
+`npm run typecheck` runs Next.js type generation and then type-checks the single
+`tsconfig.json` project, which covers all of `src/`.
 
 ### Migration verification harness
 
@@ -171,7 +160,6 @@ committed.
   request are compatible with the default Next.js deployment model.
 - No production secrets or environment variables are required at build time or
   runtime.
-- The legacy Vite build is not the deployment target.
 
 To deploy, import the repository in Vercel, confirm the framework preset is
 Next.js, and use the default build and output settings. No Vercel project has
@@ -181,8 +169,8 @@ been created or linked from this worktree, and no deployment has been performed.
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main`,
 `next-impl`, and `migrate-to-nextjs`. It installs from the lockfile with
-`npm ci`, runs lint, typecheck, the Next.js build, the Vite build, the migration
-harness, and `git diff --check`. Chrome is installed explicitly with
+`npm ci`, runs lint, typecheck, the Next.js build, the migration harness, and
+`git diff --check`. Chrome is installed explicitly with
 `browser-actions/setup-chrome` and passed to the harness through `CHROME_PATH`.
 The workflow requires no production secrets and cannot send a real survey
 submission.
@@ -203,9 +191,6 @@ commands, but it has not yet run on GitHub Actions.
   `page.tsx` and a client `LandingPage.tsx`. Four client routes use
   metadata-only `layout.tsx` files so they can export metadata. Rendering and
   behavior are unchanged.
-- **Legacy ESLint exclusions remain.** The legacy Vite components are still
-  excluded from the lint gate. Production Next.js code, including
-  `src/components/next/DeepLinkCard.tsx`, is linted.
 - **`.DS_Store` is tracked.** This is a pre-existing repository condition and
   was left untouched.
 - **No remote CI run yet.** The workflow is committed to the worktree only after
@@ -218,7 +203,6 @@ commands, but it has not yet run on GitHub Actions.
 2. Create/link the Vercel project and run an authorized preview deployment.
 3. Run the CI workflow on GitHub and confirm the Chrome-backed harness passes on
    the hosted runner.
-4. Decide when to decommission the Vite application and legacy components in a
-   separately authorized milestone.
-5. Verify survey persistence through an authorized server-side or Apps Script
+4. Verify survey persistence through an authorized server-side or Apps Script
    check if that guarantee is required.
+5. Decide the fate of the pre-existing tracked `.DS_Store`.
