@@ -766,7 +766,7 @@ async function run() {
     page.on("Network.loadingFailed", (params) => {
       if (params.canceled || params.errorText === "net::ERR_ABORTED") return;
       const url = requestUrls.get(params.requestId) || "";
-      if (isIgnorableUrl(url) || isIgnorableRemoteAsset(url)) return;
+      if (isIgnorableRemoteAsset(url)) return;
       failedRequests.push({
         phase: currentPhase,
         source: "request",
@@ -776,7 +776,7 @@ async function run() {
     page.on("Network.responseReceived", (params) => {
       const { response, type } = params;
       if (!response || response.status < 400) return;
-      if (isIgnorableUrl(response.url) || isIgnorableRemoteAsset(response.url)) return;
+      if (isIgnorableRemoteAsset(response.url)) return;
       if (!response.url.startsWith(baseUrl)) return;
       failedRequests.push({
         phase: currentPhase,
@@ -1084,6 +1084,59 @@ async function run() {
         );
       }
       return "5 exact document URLs";
+    });
+
+    await check("page metadata and favicon are present, unique, and canonical-free", async () => {
+      const titles = [];
+      for (const route of EXPECTED_ROUTES) {
+        const response = await fetch(`${baseUrl}${route}`, {
+          signal: AbortSignal.timeout(15000),
+        });
+        assert(
+          response.status === 200,
+          `${route} returned HTTP ${response.status}`
+        );
+        const html = await response.text();
+        const title = html.match(/<title>([^<]*)<\/title>/)?.[1]?.trim();
+        assert(title, `${route} has no <title>`);
+        titles.push(`${route} → ${title}`);
+
+        const description = html.match(
+          /<meta name="description" content="([^"]+)/
+        )?.[1];
+        assert(description, `${route} has no meta description`);
+        assert(
+          /<meta property="og:title" content="[^"]+"/.test(html),
+          `${route} has no og:title`
+        );
+        assert(
+          /<meta property="og:description" content="[^"]+"/.test(html),
+          `${route} has no og:description`
+        );
+        assert(
+          !/rel="canonical"/.test(html),
+          `${route} emits a canonical URL but no production domain is confirmed`
+        );
+        assert(/rel="icon"/.test(html), `${route} has no icon link`);
+      }
+
+      const uniqueTitles = new Set(titles.map((entry) => entry.split(" → ")[1]));
+      assert(
+        uniqueTitles.size === titles.length,
+        `duplicate page titles: ${titles.join(" | ")}`
+      );
+
+      for (const asset of ["/favicon.ico", "/icon.svg"]) {
+        const response = await fetch(`${baseUrl}${asset}`, {
+          signal: AbortSignal.timeout(15000),
+        });
+        assert(
+          response.status === 200,
+          `${asset} returned HTTP ${response.status}`
+        );
+      }
+
+      return `${titles.length} unique titles, descriptions, OG tags, no canonical, favicon assets 200`;
     });
 
     console.log("\nBrowser route checks");
@@ -2609,6 +2662,14 @@ async function run() {
         assert(text.includes(marker), `404 page is missing ${JSON.stringify(marker)}`);
       }
       assert(
+        await evaluate(`document.querySelectorAll("title").length === 1`),
+        "the 404 document should contain exactly one <title>"
+      );
+      assert(
+        await evaluate(`!!document.title.trim()`),
+        "the 404 document has no title"
+      );
+      assert(
         await evaluate(`!!document.querySelector('meta[name="robots"][content="noindex"]')`),
         "noindex meta is missing"
       );
@@ -2684,10 +2745,6 @@ async function run() {
     currentPhase = "runtime health";
     await check("no console errors, exceptions, or unexpected failed requests", async () => {
       const problems = [...runtimeErrors, ...failedRequests].filter((problem) => {
-        if (isIgnorableUrl(problem.message)) {
-          warnings.push(`Ignored known missing favicon request: ${problem.message}`);
-          return false;
-        }
         if (isIgnorableRemoteAsset(problem.message)) {
           if (
             !warnings.some((warning) =>
@@ -2749,15 +2806,6 @@ async function run() {
     await cleanup();
   }
 
-  const ignoredFavicon = runtimeErrors
-    .concat(failedRequests)
-    .some((problem) => isIgnorableUrl(problem.message));
-  if (ignoredFavicon && !warnings.some((warning) => warning.includes("favicon"))) {
-    warnings.push(
-      "The browser requested /favicon.ico, which is not implemented yet (planned for a later milestone)."
-    );
-  }
-
   console.log("\nSummary");
   console.log(`  Passed:   ${passes.length}`);
   console.log(`  Failed:   ${failures.length}`);
@@ -2789,10 +2837,6 @@ const KNOWN_REMOTE_ASSETS = [
   "https://storage.googleapis.com/uxpilot-auth.appspot.com/gen_88f00ba619_7ca58802f2a328bf.png",
   "https://storage.googleapis.com/uxpilot-auth.appspot.com/gen_e96766a1f9_a1482af51388d43e.png",
 ];
-
-function isIgnorableUrl(value) {
-  return /favicon\.ico/.test(String(value));
-}
 
 function isIgnorableRemoteAsset(value) {
   const text = String(value);

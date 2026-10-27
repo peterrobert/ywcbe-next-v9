@@ -11,7 +11,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { DeepLinkCard } from "@/components/CloserLookWorkspace/DeepLinkCard";
+import { DeepLinkCard } from "@/components/next/DeepLinkCard";
 
 const CloserLookWorkspace = () => {
   const router = useRouter();

@@ -1,6 +1,16 @@
+import type { Metadata } from "next";
 import ConceptOverlay from "@/components/next/ConceptOverlay";
 import TucSkipNav from "@/components/next/TucSkipNav";
 import { Trash2 } from "lucide-react";
+
+const description =
+  "TUC is not replacing the tools and systems that already work. It is designed to connect them so people, knowledge, and results can travel further.";
+
+export const metadata: Metadata = {
+  title: "Another App?",
+  description,
+  openGraph: { title: "Another App? | TUC", description },
+};
 
 const CrumpledPaperOverview = () => {
   return (

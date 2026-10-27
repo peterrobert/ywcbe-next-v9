@@ -3,20 +3,25 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
-    "dev": "vite",
-    "dev:vite": "vite",
+    "dev": "next dev",
     "dev:next": "next dev",
-    "build": "npm run typecheck:legacy && npm run typecheck:node && vite build",
-    "build:vite": "vite build",
+    "dev:vite": "vite",
+    "build": "next build",
     "build:next": "next build",
+    "build:vite": "vite build",
+    "start": "next start",
     "start:next": "next start",
+    "preview": "vite preview",
+    "preview:vite": "vite preview",
     "lint": "eslint .",
     "typecheck:next": "next typegen && tsc --noEmit -p tsconfig.json",
     "typecheck:legacy": "tsc --noEmit -p tsconfig.legacy.json",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck": "npm run typecheck:next && npm run typecheck:legacy && npm run typecheck:node",
-    "preview": "vite preview",
     "verify:migration": "node scripts/verify-migration.mjs"
   },
   "dependencies": {

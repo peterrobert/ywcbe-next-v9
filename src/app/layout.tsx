@@ -3,8 +3,22 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { Providers } from "./providers";
 
+const siteDescription =
+  "TUC (The Ultimate Collaboration) connects people, ideas, knowledge, and resources so existing efforts can build on what already works.";
+
 export const metadata: Metadata = {
-  title: "TUC — The Ultimate Collaboration",
+  title: {
+    default: "TUC — The Ultimate Collaboration",
+    template: "%s | TUC",
+  },
+  description: siteDescription,
+  applicationName: "TUC — The Ultimate Collaboration",
+  openGraph: {
+    type: "website",
+    siteName: "TUC — The Ultimate Collaboration",
+    title: "TUC — The Ultimate Collaboration",
+    description: siteDescription,
+  },
 };
 
 export const viewport: Viewport = {

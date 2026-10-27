@@ -1,6 +1,19 @@
+import type { Metadata } from "next";
 import ConceptOverlay from "@/components/next/ConceptOverlay";
 import TucSkipNav from "@/components/next/TucSkipNav";
 import { Globe2 } from "lucide-react";
+
+const description =
+  "Much of the value TUC needs already exists in people, ideas, knowledge, places, tools, and previous efforts. The opportunity is connecting what is overlooked or disconnected.";
+
+export const metadata: Metadata = {
+  title: "The Resources We Need Already Exist",
+  description,
+  openGraph: {
+    title: "The Resources We Need Already Exist | TUC",
+    description,
+  },
+};
 
 const EarthGlobeOverview = () => {
   return (

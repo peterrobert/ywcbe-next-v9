@@ -1,6 +1,16 @@
+import type { Metadata } from "next";
 import ConceptOverlay from "@/components/next/ConceptOverlay";
 import TucSkipNav from "@/components/next/TucSkipNav";
 import { Flag } from "lucide-react";
+
+const description =
+  "Noticing what others missed can create value. TUC treats observations and concerns as useful signals worth sharing rather than problems you must solve alone.";
+
+export const metadata: Metadata = {
+  title: "Red Flags",
+  description,
+  openGraph: { title: "Red Flags | TUC", description },
+};
 
 const RedFlagOverview = () => {
   return (

@@ -1,6 +1,16 @@
+import type { Metadata } from "next";
 import ConceptOverlay from "@/components/next/ConceptOverlay";
 import TucSkipNav from "@/components/next/TucSkipNav";
 import { Hand } from "lucide-react";
+
+const description =
+  "What if we stopped starting over? TUC is being built as a global connectivity and collaboration system that helps people and existing efforts find one another and build on what already works.";
+
+export const metadata: Metadata = {
+  title: "What is TUC?",
+  description,
+  openGraph: { title: "What is TUC? | TUC", description },
+};
 
 const BlackHandOverview = () => {
   return (

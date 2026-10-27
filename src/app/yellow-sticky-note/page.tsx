@@ -1,6 +1,16 @@
+import type { Metadata } from "next";
 import ConceptOverlay from "@/components/next/ConceptOverlay";
 import TucSkipNav from "@/components/next/TucSkipNav";
 import { StickyNote } from "lucide-react";
+
+const description =
+  "TUC asks for a small fraction of existing capacity: a few minutes, a useful introduction, specialized knowledge, or access to a resource that is already there.";
+
+export const metadata: Metadata = {
+  title: "2% Spare Bandwidth",
+  description,
+  openGraph: { title: "2% Spare Bandwidth | TUC", description },
+};
 
 const YellowStickyNoteOverview = () => {
   return (
