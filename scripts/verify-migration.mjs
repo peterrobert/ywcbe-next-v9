@@ -40,6 +40,9 @@ const CHROME_ARGS = [
   "--metrics-recording-only",
   "--remote-debugging-port=0",
   "--window-size=1440,900",
+  // Safety backstop: even if request interception ever fails, a survey
+  // submission must never reach the production Apps Script deployment.
+  "--host-resolver-rules=MAP script.google.com 127.0.0.1",
 ];
 
 const EXPECTED_ROUTES = [
@@ -52,6 +55,7 @@ const EXPECTED_ROUTES = [
   "/closerlook",
   "/top10-poc",
   "/open-items",
+  "/survey-poc",
 ];
 
 const SKIP_NAV_LINKS = EXPECTED_ROUTES;
@@ -118,6 +122,22 @@ const ROUTE_EXPECTATIONS = {
     ],
     mainTarget: true,
   },
+  "/survey-poc": {
+    heading: "WTF is TUC?",
+    markers: [
+      "A TUC Survey",
+      "Final Approved Version",
+      "Part 1 — Your TUC Experience",
+      "Part 2 — Connections",
+      "Part 3 — Connecting the Dots",
+      "Part 4 — Your Two Cents",
+      "Optional — Stay Connected",
+      "PASS 🧩",
+      "SUBMIT MY TWO CENTS!",
+      "Thanks for helping TUC get better!",
+    ],
+    mainTarget: true,
+  },
 };
 
 const OPEN_ITEMS_FORM_URL =
@@ -130,6 +150,97 @@ const CLOSERLOOK_DOC_URLS = [
   "https://docs.google.com/document/d/1mKajfyW4qiPXF-O0LUXq1RHaq7048I2i2zTej9impz8/edit?usp=sharing",
   "https://docs.google.com/document/d/1A4jlADhoSdn0BZpT8LTQ-0Vzjs0jK1mcIh_2QEqYdsM/edit?usp=sharing",
   "https://docs.google.com/document/d/1-pAQRa1Os5gTCzb6UuppVtMVZgTf8cIJmJdyMtvKX8c/edit?usp=sharing",
+];
+
+const SURVEY_ENDPOINT =
+  "https://script.google.com/macros/s/AKfycbyk7HYTI1W8wDBcnoEzckS8lOoZFq8xd9UCqVsJesbzHVmsK4-50-pcGxavxvDp2W9ZvQ/exec";
+const SURVEY_PASS_OPTION = "PASS 🧩 (Maybe I'll answer next time!)";
+const SURVEY_PASS_LABELS = [
+  "Q1 History",
+  "Q1 Completed Before",
+  "Q2 First Connection",
+  "Q3 Sparked Interest",
+  "Q4 Understanding",
+  "Q5 Stands Out",
+  "Q6 Engaged So Far",
+  "Q7 Future Interests",
+  "Q7 Imagine Engaging",
+  "Q8 Perspective Change",
+  "Q9 Easter Eggs",
+  "Q10 Puzzle Meaning",
+  "Q11 Mind",
+  "Q12 Question",
+  "Follow-up",
+];
+const SURVEY_QUESTION_HEADINGS = [
+  "1. What's your history with TUC? 👋",
+  "2. How did you first connect with TUC? 🔎",
+  "3. Has anything sparked or renewed your curiosity? 🔥",
+  "4. So… WTF is TUC? ❓",
+  "5. What stands out to you? 👀",
+  "6. How have you engaged with TUC so far?",
+  "7. What interests you about engaging with TUC going forward? 🚀",
+  "8. What's changed in your perspective on TUC? 🔄",
+  "9. Have you noticed any 🥚 Easter eggs, hidden connections, or unexpected details?",
+  "10. What do you think “…… 🧩 ……” means?",
+  "11. What's on your mind?",
+  "12. What question should we have asked?",
+];
+const SURVEY_ROW_COUNTS = {
+  1: 11,
+  2: 10,
+  3: 5,
+  4: 6,
+  5: 12,
+  6: 10,
+  7: 17,
+  8: 10,
+  9: 5,
+  10: 4,
+  11: 1,
+  12: 1,
+  followUp: 3,
+};
+const SURVEY_TEXT_MARKERS = [
+  "WTF is TUC? ❓",
+  "A TUC Survey … #itsotuc",
+  "Final Approved Version",
+  "No tests. No wrong answers. No pressure.",
+  "Whether you just discovered TUC, have followed its evolution from YesWeCan, or helped build it over the years, your perspective matters.",
+  "We're interested in what you understand, notice, question, discover, and believe could be better.",
+  "Answer anything. Pass on anything. Come back anytime.",
+  "Part 1 — Your TUC Experience",
+  "Part 2 — Connections & Possibilities",
+  "Part 3 — Connecting the Dots",
+  "Part 4 — Your Two Cents",
+  "Choose as many as apply.",
+  "Just discovered it",
+  "Someone introduced me to TUC",
+  "I stumbled across it",
+  "Optional: What caught or renewed your interest?",
+  "Where are you in understanding TUC today?",
+  "2% Spare Bandwidth",
+  "CloserLook@",
+  "We're interested in actual participation, whether yesterday or years ago.",
+  "No commitment required.",
+  "Could you imagine yourself engaging or continuing to engage with TUC?",
+  "Think about your first encounter, your last visit, or your last survey.",
+  "Optional: A little something for the curious.",
+  "Wait… what Easter eggs? 😄",
+  "I think I've connected the dots!",
+  "I have a theory",
+  "Something confusing? Brilliant? Ridiculous? Missing? Worth exploring? Something that could be better—or something we absolutely shouldn't change?",
+  "Perhaps an idea from years ago that deserves another look.",
+  "Sometimes the best question is the one nobody thought to ask.",
+  "Your thoughts:",
+  "Your question:",
+  "Optional — Stay Connected",
+  "May we follow up?",
+  "You can remain anonymous. Sharing your contact information doesn't subscribe you to anything, and follow-up isn't guaranteed.",
+  "SUBMIT MY TWO CENTS!",
+  "Thanks for helping TUC get better!",
+  "#itsotuc",
+  "BACK TO TUC",
 ];
 
 const passes = [];
@@ -497,6 +608,7 @@ async function run() {
   const runtimeErrors = [];
   const failedRequests = [];
   const requestUrls = new Map();
+  const surveyNetworkRequests = [];
   let currentPhase = "startup";
 
   const cleanup = async () => {
@@ -616,6 +728,13 @@ async function run() {
     });
     page.on("Network.requestWillBeSent", (params) => {
       requestUrls.set(params.requestId, params.request.url);
+      if (params.request.url === SURVEY_ENDPOINT) {
+        surveyNetworkRequests.push({
+          url: params.request.url,
+          method: params.request.method,
+          headers: params.request.headers,
+        });
+      }
     });
     page.on("Network.loadingFailed", (params) => {
       if (params.canceled || params.errorText === "net::ERR_ABORTED") return;
@@ -766,6 +885,137 @@ async function run() {
         );
         return button ? button.textContent.trim() : null;
       })()`);
+
+    const installSurveyHelpers = async () => {
+      await evaluate(`(() => {
+        const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
+        const question = (number) => {
+          const heading = [...document.querySelectorAll("main h3")].find((item) =>
+            normalize(item.textContent).startsWith(String(number) + ".")
+          );
+          return heading ? heading.closest("div.space-y-8") : null;
+        };
+        const rows = (number) => {
+          const scope = question(number);
+          return scope ? [...scope.querySelectorAll("div.cursor-pointer")] : [];
+        };
+        const row = (number, text) =>
+          rows(number).find((item) => normalize(item.textContent).includes(text)) || null;
+        const rowExact = (number, text) =>
+          rows(number).find((item) => normalize(item.textContent) === text) || null;
+        const labeledField = (scope, labelPrefix) => {
+          if (!scope) return null;
+          const label = [...scope.querySelectorAll("label")].find((item) =>
+            normalize(item.textContent).startsWith(labelPrefix)
+          );
+          if (!label) return null;
+          return label.parentElement?.querySelector("input, textarea") ?? label.nextElementSibling;
+        };
+        const field = (number, labelPrefix) => labeledField(question(number), labelPrefix);
+        const contactField = (labelPrefix) => {
+          const label = [...document.querySelectorAll("main label")].find((item) =>
+            normalize(item.textContent).startsWith(labelPrefix)
+          );
+          return label?.parentElement?.querySelector("input, textarea") ?? null;
+        };
+        const followUpRow = (text) => {
+          const label = [...document.querySelectorAll("main label")].find((item) =>
+            normalize(item.textContent) === "May we follow up?"
+          );
+          const scope = label?.parentElement;
+          if (!scope) return null;
+          return [...scope.querySelectorAll("div.cursor-pointer")].find((item) =>
+            normalize(item.textContent).includes(text)
+          ) || null;
+        };
+        const setValue = (element, value) => {
+          if (!element) return false;
+          const prototype = element.tagName === "TEXTAREA"
+            ? HTMLTextAreaElement.prototype
+            : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+          if (!setter) return false;
+          setter.call(element, value);
+          element.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        };
+        window.__survey = {
+          normalize,
+          question,
+          row,
+          rowExact,
+          field,
+          contactField,
+          followUpRow,
+          setValue
+        };
+        return true;
+      })()`);
+    };
+
+    const clickSurveyRow = async (number, text, exact = false) => {
+      await trustedClick(
+        `(() => window.__survey?.${exact ? "rowExact" : "row"}(${number}, ${JSON.stringify(text)}))()`
+      );
+    };
+
+    const clickSurveyFollowUp = async (text) => {
+      await trustedClick(
+        `(() => window.__survey?.followUpRow(${JSON.stringify(text)}))()`
+      );
+    };
+
+    const setSurveyField = async (number, labelPrefix, value) => {
+      const updated = await evaluate(
+        `(() => window.__survey?.setValue(window.__survey?.field(${number}, ${JSON.stringify(labelPrefix)}), ${JSON.stringify(value)}))()`
+      );
+      assert(updated, `could not set ${JSON.stringify(labelPrefix)} in Q${number}`);
+    };
+
+    const setSurveyContact = async (labelPrefix, value) => {
+      const updated = await evaluate(
+        `(() => window.__survey?.setValue(window.__survey?.contactField(${JSON.stringify(labelPrefix)}), ${JSON.stringify(value)}))()`
+      );
+      assert(updated, `could not set contact field ${JSON.stringify(labelPrefix)}`);
+    };
+
+    const surveyFieldValue = (number, labelPrefix) =>
+      evaluate(
+        `window.__survey?.field(${number}, ${JSON.stringify(labelPrefix)})?.value ?? null`
+      );
+
+    const surveyContactValue = (labelPrefix) =>
+      evaluate(
+        `window.__survey?.contactField(${JSON.stringify(labelPrefix)})?.value ?? null`
+      );
+
+    const surveyRowState = (number, text, exact = false) =>
+      evaluate(`(() => {
+        const row = window.__survey?.${exact ? "rowExact" : "row"}(${number}, ${JSON.stringify(text)});
+        if (!row) return null;
+        const control = row.querySelector("[data-state]");
+        return {
+          checked: control?.getAttribute("data-state") === "checked",
+          text: window.__survey.normalize(row.textContent)
+        };
+      })()`);
+
+    const surveyFollowUpState = (text) =>
+      evaluate(`(() => {
+        const row = window.__survey?.followUpRow(${JSON.stringify(text)});
+        if (!row) return null;
+        const control = row.querySelector("[data-state]");
+        return {
+          checked: control?.getAttribute("data-state") === "checked",
+          text: window.__survey.normalize(row.textContent)
+        };
+      })()`);
+
+    const submitSurvey = async () => {
+      await trustedClick(
+        `[...document.querySelectorAll("button")].find((button) => button.textContent.includes("SUBMIT MY TWO CENTS!"))`
+      );
+    };
 
     console.log("\nHTTP route checks");
     for (const route of EXPECTED_ROUTES) {
@@ -1311,6 +1561,651 @@ async function run() {
       }
     });
 
+    console.log("\nSurvey checks");
+    currentPhase = "survey";
+    await goto("/survey-poc");
+    await installSurveyHelpers();
+
+    const appsScriptRequests = [];
+    const appsScriptControl = { mode: "block", held: null };
+    page.on("Fetch.requestPaused", (params) => {
+      const record = {
+        requestId: params.requestId,
+        url: params.request.url,
+        method: params.request.method,
+        headers: params.request.headers,
+        postData:
+          params.request.postData ??
+          params.request.postDataEntries
+            ?.map((entry) => Buffer.from(entry.bytes, "base64").toString("utf8"))
+            .join("") ??
+          "",
+      };
+      appsScriptRequests.push(record);
+
+      if (appsScriptControl.mode === "hold") {
+        appsScriptControl.held = record;
+        return;
+      }
+
+      const action =
+        appsScriptControl.mode === "fulfill"
+          ? page.send("Fetch.fulfillRequest", {
+              requestId: params.requestId,
+              responseCode: 200,
+              responseHeaders: [{ name: "Content-Type", value: "text/plain" }],
+              body: Buffer.from("ok").toString("base64"),
+            })
+          : page.send("Fetch.failRequest", {
+              requestId: params.requestId,
+              errorReason: appsScriptControl.mode === "fail" ? "Failed" : "Aborted",
+            });
+      action.catch((error) => {
+        warnings.push(`Apps Script interception error: ${error.message}`);
+      });
+    });
+    await page.send("Fetch.enable", {
+      patterns: [
+        {
+          urlPattern: "https://script.google.com/*",
+          requestStage: "Request",
+        },
+      ],
+    });
+
+    await check("Survey has 12 questions, 5 sections, 95 option rows, and exact content", async () => {
+      const structure = await evaluate(`(() => {
+        const headings = [...document.querySelectorAll("main h3")]
+          .map((item) => window.__survey.normalize(item.textContent))
+          .filter((text) => /^\\d+\\./.test(text));
+        const sections = [...document.querySelectorAll("main h2")]
+          .map((item) => window.__survey.normalize(item.textContent));
+        const counts = {};
+        for (const number of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
+          counts[number] = window.__survey.question(number)?.querySelectorAll("div.cursor-pointer").length ?? -1;
+        }
+        const followUpLabel = [...document.querySelectorAll("main label")].find((item) =>
+          window.__survey.normalize(item.textContent) === "May we follow up?"
+        );
+        counts.followUp = followUpLabel?.parentElement?.querySelectorAll("div.cursor-pointer").length ?? -1;
+        const submit = [...document.querySelectorAll("button")].find((item) =>
+          item.textContent.includes("SUBMIT MY TWO CENTS!")
+        );
+        return {
+          headings,
+          sections,
+          counts,
+          hasForm: !!document.querySelector("main form"),
+          namePlaceholder: document.querySelector('main input[placeholder="Esther..."]')?.getAttribute("placeholder") ?? null,
+          emailPlaceholder: document.querySelector('main input[placeholder="esther@tuc.org..."]')?.getAttribute("placeholder") ?? null,
+          emptyFields: [...document.querySelectorAll("main input, main textarea")].every((item) => !item.value),
+          submit: submit ? {
+            text: window.__survey.normalize(submit.textContent),
+            disabled: submit.disabled
+          } : null
+        };
+      })()`);
+
+      assert(structure.headings.length === 12, `expected 12 question headings, got ${structure.headings.length}`);
+      for (let index = 0; index < SURVEY_QUESTION_HEADINGS.length; index += 1) {
+        assert(
+          structure.headings[index] === SURVEY_QUESTION_HEADINGS[index],
+          `question ${index + 1} heading is ${JSON.stringify(structure.headings[index])}`
+        );
+      }
+      assert(
+        JSON.stringify(structure.sections) === JSON.stringify([
+          "Part 1 — Your TUC Experience",
+          "Part 2 — Connections & Possibilities",
+          "Part 3 — Connecting the Dots",
+          "Part 4 — Your Two Cents",
+          "Optional — Stay Connected",
+        ]),
+        `section headings are ${JSON.stringify(structure.sections)}`
+      );
+      assert(
+        JSON.stringify(structure.counts) === JSON.stringify(SURVEY_ROW_COUNTS),
+        `option row counts are ${JSON.stringify(structure.counts)}`
+      );
+      assert(!structure.hasForm, "survey should not render a <form> element");
+      assert(
+        structure.namePlaceholder === "Esther...",
+        `name placeholder is ${JSON.stringify(structure.namePlaceholder)}`
+      );
+      assert(
+        structure.emailPlaceholder === "esther@tuc.org...",
+        `email placeholder is ${JSON.stringify(structure.emailPlaceholder)}`
+      );
+      assert(structure.emptyFields, "survey fields should start empty");
+      assert(structure.submit, "submit button not found");
+      assert(
+        structure.submit.text === "SUBMIT MY TWO CENTS!",
+        `submit text is ${JSON.stringify(structure.submit.text)}`
+      );
+      assert(structure.submit.disabled === false, "submit button should start enabled");
+
+      const text = (await bodyText()).toLowerCase();
+      for (const marker of SURVEY_TEXT_MARKERS) {
+        assert(
+          text.includes(marker.toLowerCase()),
+          `survey is missing ${JSON.stringify(marker)}`
+        );
+      }
+      return "12 questions, 5 sections, 95 option rows, exact content markers";
+    });
+
+    await check("Survey PASS semantics match legacy multi- and single-select behavior", async () => {
+      await goto("/survey-poc");
+      await installSurveyHelpers();
+
+      await clickSurveyRow(1, "Just discovered it");
+      await clickSurveyRow(1, "I've helped test, build, or improve it");
+      assert(
+        (await surveyRowState(1, "Just discovered it")).checked,
+        "Q1 normal option did not select"
+      );
+      await clickSurveyRow(1, SURVEY_PASS_OPTION);
+      assert(
+        (await surveyRowState(1, SURVEY_PASS_OPTION)).checked,
+        "Q1 PASS did not select"
+      );
+      assert(
+        !(await surveyRowState(1, "Just discovered it")).checked,
+        "Q1 PASS did not clear normal selections"
+      );
+      await clickSurveyRow(1, "I'm returning to see what's changed");
+      assert(
+        !(await surveyRowState(1, SURVEY_PASS_OPTION)).checked,
+        "Q1 normal option did not clear PASS"
+      );
+      assert(
+        (await surveyRowState(1, "I'm returning to see what's changed")).checked,
+        "Q1 normal option did not select"
+      );
+      await clickSurveyRow(1, SURVEY_PASS_OPTION);
+      await clickSurveyRow(1, SURVEY_PASS_OPTION);
+      assert(
+        (await surveyRowState(1, SURVEY_PASS_OPTION)).checked,
+        "Q1 PASS should remain selected when clicked again"
+      );
+
+      await clickSurveyRow(1, "PASS 🧩", true);
+      assert(
+        (await surveyRowState(1, "PASS 🧩", true)).checked,
+        "Q1 sub-question PASS did not select"
+      );
+      await clickSurveyRow(1, "Yes");
+      assert(
+        !(await surveyRowState(1, "PASS 🧩", true)).checked,
+        "Q1 sub-question PASS did not clear"
+      );
+      assert((await surveyRowState(1, "Yes")).checked, "Q1 sub-question Yes did not select");
+
+      await clickSurveyRow(3, "Maybe");
+      await clickSurveyRow(3, "PASS 🧩", true);
+      assert(
+        (await surveyRowState(3, "PASS 🧩", true)).checked,
+        "Q3 PASS did not select"
+      );
+      assert(!(await surveyRowState(3, "Maybe")).checked, "Q3 PASS did not clear Maybe");
+
+      await clickSurveyRow(4, SURVEY_PASS_OPTION);
+      assert(
+        (await surveyRowState(4, SURVEY_PASS_OPTION)).checked,
+        "Q4 PASS did not select"
+      );
+
+      await clickSurveyRow(5, "2% Spare Bandwidth");
+      await clickSurveyRow(5, "CloserLook@");
+      await clickSurveyRow(5, SURVEY_PASS_OPTION);
+      assert(
+        (await surveyRowState(5, SURVEY_PASS_OPTION)).checked,
+        "Q5 PASS did not select"
+      );
+      assert(
+        !(await surveyRowState(5, "2% Spare Bandwidth")).checked,
+        "Q5 PASS did not clear normal selections"
+      );
+      await clickSurveyRow(5, "Top10");
+      assert(
+        !(await surveyRowState(5, SURVEY_PASS_OPTION)).checked,
+        "Q5 normal option did not clear PASS"
+      );
+      assert((await surveyRowState(5, "Top10")).checked, "Q5 normal option did not select");
+
+      await clickSurveyRow(7, "Just exploring for now");
+      await clickSurveyRow(7, "PASS 🧩", true);
+      assert(
+        (await surveyRowState(7, "PASS 🧩", true)).checked,
+        "Q7 sub-question PASS did not select"
+      );
+      assert(
+        (await surveyRowState(7, "Just exploring for now")).checked,
+        "Q7 main selection should remain independent of the sub-question"
+      );
+
+      await clickSurveyFollowUp("PASS 🧩");
+      assert(
+        (await surveyFollowUpState("PASS 🧩")).checked,
+        "Follow-up PASS did not select"
+      );
+
+      await setSurveyField(11, "Your thoughts:", "temporary thoughts");
+      assert(
+        (await surveyFieldValue(11, "Your thoughts:")) === "temporary thoughts",
+        "Q11 text was not set"
+      );
+      await clickSurveyRow(11, SURVEY_PASS_OPTION);
+      assert(
+        (await surveyFieldValue(11, "Your thoughts:")) === SURVEY_PASS_OPTION,
+        "Q11 PASS did not overwrite text"
+      );
+      await clickSurveyRow(11, SURVEY_PASS_OPTION);
+      assert(
+        (await surveyFieldValue(11, "Your thoughts:")) === "",
+        "Q11 PASS toggle did not clear text"
+      );
+
+      await setSurveyField(12, "Your question:", "temporary question");
+      await clickSurveyRow(12, SURVEY_PASS_OPTION);
+      assert(
+        (await surveyFieldValue(12, "Your question:")) === SURVEY_PASS_OPTION,
+        "Q12 PASS did not overwrite text"
+      );
+      await clickSurveyRow(12, SURVEY_PASS_OPTION);
+      assert(
+        (await surveyFieldValue(12, "Your question:")) === "",
+        "Q12 PASS toggle did not clear text"
+      );
+
+      return "multi-select replace/remove, single-select, text PASS toggle, follow-up";
+    });
+
+    await check("Survey sends the exact payload, shows success, and returns to TUC", async () => {
+      await goto("/survey-poc");
+      await installSurveyHelpers();
+
+      await clickSurveyRow(1, "Just discovered it");
+      await clickSurveyRow(1, "I've helped test, build, or improve it");
+      await setSurveyField(1, "Something else:", "M10 Q1 other");
+      await clickSurveyRow(1, "Yes");
+
+      await clickSurveyRow(2, "Someone introduced me to TUC");
+      await clickSurveyRow(2, "I stumbled across it");
+      await setSurveyField(2, "Something else:", "M10 Q2 other");
+
+      await clickSurveyRow(3, "Maybe");
+      await setSurveyField(3, "Optional: What caught or renewed your interest?", "M10 Q3 explanation");
+
+      await clickSurveyRow(4, "I'm still learning");
+      await setSurveyField(4, "Something else:", "M10 Q4 other");
+
+      await clickSurveyRow(5, "2% Spare Bandwidth");
+      await clickSurveyRow(5, "CloserLook@");
+      await setSurveyField(5, "Something else:", "M10 Q5 other");
+
+      await clickSurveyRow(6, "Explored the website or TUC documents");
+      await setSurveyField(6, "Something else:", "M10 Q6 other");
+
+      await clickSurveyRow(7, "Sharing ideas or suggestions");
+      await clickSurveyRow(7, "Just exploring for now");
+      await setSurveyField(7, "Something else:", "M10 Q7 other");
+      await clickSurveyRow(7, "Maybe", true);
+
+      await clickSurveyRow(8, "I understand TUC better");
+      await setSurveyField(8, "Something else:", "M10 Q8 other");
+
+      await clickSurveyRow(9, "No");
+      await setSurveyField(9, "Optional: What did you notice?", "M10 Q9 details");
+
+      await clickSurveyRow(10, "I have a theory");
+      await setSurveyField(10, "Optional: What's your interpretation?", "M10 Q10 interpretation");
+
+      await setSurveyField(11, "Your thoughts:", "M10 Q11 mind");
+      await setSurveyField(12, "Your question:", "M10 Q12 question");
+      await setSurveyContact("Name:", "M10 Test");
+      await setSurveyContact("Email:", "m10@example.test");
+      await clickSurveyFollowUp("No");
+
+      appsScriptControl.mode = "fulfill";
+      const requestIndex = appsScriptRequests.length;
+      await submitSurvey();
+      await waitFor(
+        () => appsScriptRequests.length > requestIndex,
+        "intercepted survey submission",
+        10000
+      );
+      const request = appsScriptRequests[requestIndex];
+      assert(request, "survey request was not captured");
+
+      await waitFor(
+        async () => (await bodyText()).includes("Didn't answer everything? No worries."),
+        "survey success screen",
+        10000
+      );
+      await waitFor(
+        async () => (await bodyText()).includes("Survey Submitted!"),
+        "survey success toast",
+        5000
+      );
+      await waitFor(
+        async () => (await evaluate("window.scrollY")) === 0,
+        "survey success scroll to top",
+        5000
+      );
+
+      assert(request.method === "POST", `survey method is ${JSON.stringify(request.method)}`);
+      assert(request.url === SURVEY_ENDPOINT, `survey URL is ${JSON.stringify(request.url)}`);
+      const header = (name) =>
+        Object.entries(request.headers || {}).find(
+          ([key]) => key.toLowerCase() === name
+        )?.[1] ?? "";
+      assert(
+        /^text\/plain/.test(header("content-type")),
+        `survey content-type is ${JSON.stringify(header("content-type"))}`
+      );
+      const surveySource = fs.readFileSync(
+        path.join(ROOT, "src/app/survey-poc/page.tsx"),
+        "utf8"
+      );
+      assert(
+        /mode:\s*["']no-cors["']/.test(surveySource),
+        "survey source is missing mode: no-cors"
+      );
+      assert(
+        /Content-Type["']?\s*:\s*["']text\/plain;charset=utf-8["']/.test(surveySource),
+        "survey source is missing the exact text/plain content type"
+      );
+      const endpointNetworkRequests = surveyNetworkRequests.filter(
+        (item) => item.url === SURVEY_ENDPOINT
+      );
+      assert(
+        endpointNetworkRequests.length === 1,
+        `expected one network request to the survey endpoint, got ${endpointNetworkRequests.length}`
+      );
+      assert(
+        endpointNetworkRequests.every((item) => item.method === "POST"),
+        "survey endpoint received a non-POST/preflight request"
+      );
+
+      const payload = JSON.parse(request.postData);
+      assert(payload.type === "TUC_SURVEY_SUBMISSION", `payload type is ${JSON.stringify(payload.type)}`);
+      assert(
+        /^TUC-SRV-[A-Z0-9]{1,6}-\d{4}$/.test(payload.responseId),
+        `responseId is ${JSON.stringify(payload.responseId)}`
+      );
+      assert(
+        Number.isFinite(Date.parse(payload.submittedAt)) &&
+          Math.abs(Date.now() - Date.parse(payload.submittedAt)) < 60000,
+        `submittedAt is ${JSON.stringify(payload.submittedAt)}`
+      );
+
+      const expected = {
+        type: "TUC_SURVEY_SUBMISSION",
+        name: "M10 Test",
+        email: "m10@example.test",
+        surveyVersion: "FINAL-2026-10-24",
+        q1History: "Just discovered it, I've helped test, build, or improve it, M10 Q1 other",
+        q1CompletedBefore: "Yes",
+        q2FirstConnection: "Someone introduced me to TUC, I stumbled across it, M10 Q2 other",
+        q3CuriositySparked: "Maybe",
+        q3Explanation: "M10 Q3 explanation",
+        q4UnderstandingTuc: "I'm still learning, M10 Q4 other",
+        q5WhatStandsOut: "2% Spare Bandwidth, CloserLook@, M10 Q5 other",
+        q6ActualEngagement: "Explored the website or TUC documents, M10 Q6 other",
+        q7FutureInterests: "Sharing ideas or suggestions, Just exploring for now, M10 Q7 other",
+        q7ImagineEngaging: "Maybe",
+        q8PerspectiveChange: "I understand TUC better, M10 Q8 other",
+        q9EasterEggsNoticed: "No",
+        q9Details: "M10 Q9 details",
+        q10PuzzleMeaning: "I have a theory",
+        q10Interpretation: "M10 Q10 interpretation",
+        q11Mind: "M10 Q11 mind",
+        q12Question: "M10 Q12 question",
+        questionsPassed: "",
+        followUpPermission: "No",
+      };
+      const actual = { ...payload };
+      delete actual.responseId;
+      delete actual.submittedAt;
+      assert(
+        JSON.stringify(actual) === JSON.stringify(expected),
+        `payload mismatch:\nactual=${JSON.stringify(actual)}\nexpected=${JSON.stringify(expected)}`
+      );
+
+      const successText = (await bodyText()).toLowerCase();
+      for (const marker of [
+        "SUBMIT MY TWO CENTS!",
+        "Thanks for helping TUC get better!",
+        "Didn't answer everything? No worries.",
+        "Whether this is your first encounter or you've been part of the journey for years, there's always something more to discover, improve, or connect.",
+        "Come back anytime. Your next visit might change your perspective—or ours.",
+        "One contribution can become the starting point for many more.",
+        "#itsotuc",
+        "BACK TO TUC",
+        "Survey Submitted!",
+      ]) {
+        assert(
+          successText.includes(marker.toLowerCase()),
+          `success screen is missing ${JSON.stringify(marker)}`
+        );
+      }
+      assert(
+        !successText.includes("part 1 — your tuc experience"),
+        "success screen still contains the survey form"
+      );
+
+      await trustedClick(
+        `[...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "BACK TO TUC")`
+      );
+      await waitForPath("/");
+      await sleep(150);
+      assert((await evaluate("window.scrollY")) === 0, "BACK TO TUC did not reset scroll");
+      return "exact payload, success screen, toast, scroll, BACK TO TUC";
+    });
+
+    await check("Survey payload records all 15 PASS labels in order", async () => {
+      await goto("/survey-poc");
+      await installSurveyHelpers();
+
+      await clickSurveyRow(1, SURVEY_PASS_OPTION);
+      await clickSurveyRow(1, "PASS 🧩", true);
+      await clickSurveyRow(2, SURVEY_PASS_OPTION);
+      await clickSurveyRow(3, "PASS 🧩", true);
+      await clickSurveyRow(4, SURVEY_PASS_OPTION);
+      await clickSurveyRow(5, SURVEY_PASS_OPTION);
+      await clickSurveyRow(6, SURVEY_PASS_OPTION);
+      await clickSurveyRow(7, SURVEY_PASS_OPTION);
+      await clickSurveyRow(7, "PASS 🧩", true);
+      await clickSurveyRow(8, SURVEY_PASS_OPTION);
+      await clickSurveyRow(9, "PASS 🧩", true);
+      await clickSurveyRow(10, "PASS 🧩", true);
+      await clickSurveyRow(11, SURVEY_PASS_OPTION);
+      await clickSurveyRow(12, SURVEY_PASS_OPTION);
+      await clickSurveyFollowUp("PASS 🧩");
+
+      appsScriptControl.mode = "fulfill";
+      const requestIndex = appsScriptRequests.length;
+      await submitSurvey();
+      await waitFor(
+        () => appsScriptRequests.length > requestIndex,
+        "PASS survey submission",
+        10000
+      );
+      const request = appsScriptRequests[requestIndex];
+      await waitFor(
+        async () => (await bodyText()).includes("Didn't answer everything? No worries."),
+        "PASS survey success screen",
+        10000
+      );
+
+      const payload = JSON.parse(request.postData);
+      const expected = {
+        type: "TUC_SURVEY_SUBMISSION",
+        name: "",
+        email: "",
+        surveyVersion: "FINAL-2026-10-24",
+        q1History: SURVEY_PASS_OPTION,
+        q1CompletedBefore: SURVEY_PASS_OPTION,
+        q2FirstConnection: SURVEY_PASS_OPTION,
+        q3CuriositySparked: SURVEY_PASS_OPTION,
+        q3Explanation: "",
+        q4UnderstandingTuc: SURVEY_PASS_OPTION,
+        q5WhatStandsOut: SURVEY_PASS_OPTION,
+        q6ActualEngagement: SURVEY_PASS_OPTION,
+        q7FutureInterests: SURVEY_PASS_OPTION,
+        q7ImagineEngaging: SURVEY_PASS_OPTION,
+        q8PerspectiveChange: SURVEY_PASS_OPTION,
+        q9EasterEggsNoticed: SURVEY_PASS_OPTION,
+        q9Details: "",
+        q10PuzzleMeaning: SURVEY_PASS_OPTION,
+        q10Interpretation: "",
+        q11Mind: SURVEY_PASS_OPTION,
+        q12Question: SURVEY_PASS_OPTION,
+        questionsPassed: SURVEY_PASS_LABELS.join(", "),
+        followUpPermission: SURVEY_PASS_OPTION,
+      };
+      const actual = { ...payload };
+      delete actual.responseId;
+      delete actual.submittedAt;
+      assert(
+        JSON.stringify(actual) === JSON.stringify(expected),
+        `PASS payload mismatch:\nactual=${JSON.stringify(actual)}\nexpected=${JSON.stringify(expected)}`
+      );
+      return `${SURVEY_PASS_LABELS.length} PASS labels in exact order`;
+    });
+
+    await check("Survey failure preserves answers and re-enables submission", async () => {
+      await goto("/survey-poc");
+      await installSurveyHelpers();
+      await setSurveyField(11, "Your thoughts:", "keep my answers");
+      await setSurveyField(12, "Your question:", "keep my question");
+      await setSurveyContact("Name:", "M10 Failure");
+      await setSurveyContact("Email:", "failure@example.test");
+
+      appsScriptControl.mode = "fail";
+      currentPhase = "survey failure";
+      const requestIndex = appsScriptRequests.length;
+      await submitSurvey();
+      await waitFor(
+        () => appsScriptRequests.length > requestIndex,
+        "intercepted failure submission",
+        10000
+      );
+      await waitFor(
+        async () => (await bodyText()).includes("Submission Error"),
+        "survey failure toast",
+        10000
+      );
+
+      const failureText = await bodyText();
+      assert(failureText.includes("Submission Error"), "failure toast title is missing");
+      assert(
+        failureText.includes("Failed to fetch") ||
+          failureText.includes("Something went wrong. Your answers are safe—please try again."),
+        `unexpected failure description: ${failureText.slice(0, 500)}`
+      );
+      assert(
+        !failureText.includes("Didn't answer everything? No worries."),
+        "failure rendered the success screen"
+      );
+      assert(
+        (await surveyFieldValue(11, "Your thoughts:")) === "keep my answers",
+        "Q11 answer was not preserved after failure"
+      );
+      assert(
+        (await surveyFieldValue(12, "Your question:")) === "keep my question",
+        "Q12 answer was not preserved after failure"
+      );
+      assert(
+        (await surveyContactValue("Name:")) === "M10 Failure",
+        "name was not preserved after failure"
+      );
+      assert(
+        (await surveyContactValue("Email:")) === "failure@example.test",
+        "email was not preserved after failure"
+      );
+
+      const submitState = await evaluate(`(() => {
+        const button = [...document.querySelectorAll("button")].find((item) =>
+          item.textContent.includes("SUBMIT MY TWO CENTS!")
+        );
+        return button ? {
+          disabled: button.disabled,
+          text: window.__survey.normalize(button.textContent)
+        } : null;
+      })()`);
+      assert(submitState, "submit button missing after failure");
+      assert(submitState.disabled === false, "submit button remained disabled after failure");
+      assert(
+        submitState.text === "SUBMIT MY TWO CENTS!",
+        `submit text after failure is ${JSON.stringify(submitState.text)}`
+      );
+      currentPhase = "survey";
+      return "destructive toast, answers preserved, submit re-enabled";
+    });
+
+    await check("Survey prevents duplicate submission while in flight", async () => {
+      await goto("/survey-poc");
+      await installSurveyHelpers();
+      await setSurveyField(11, "Your thoughts:", "double submit");
+
+      appsScriptControl.mode = "hold";
+      appsScriptControl.held = null;
+      const requestIndex = appsScriptRequests.length;
+      await submitSurvey();
+      await waitFor(
+        () => appsScriptRequests.length > requestIndex,
+        "held survey submission",
+        10000
+      );
+      await waitFor(
+        async () =>
+          (await evaluate(`(() => {
+            const button = [...document.querySelectorAll("button")].find((item) =>
+              item.textContent.includes("SUBMITTING")
+            );
+            return button ? button.disabled : false;
+          })()`)) === true,
+        "submit button to disable",
+        5000
+      );
+
+      await trustedClick(
+        `[...document.querySelectorAll("button")].find((item) =>
+          item.textContent.includes("SUBMITTING")
+        )`
+      );
+      await sleep(400);
+      assert(
+        appsScriptRequests.length === requestIndex + 1,
+        `duplicate submission produced ${appsScriptRequests.length - requestIndex} requests`
+      );
+
+      const held = appsScriptControl.held;
+      assert(held, "held survey request was not captured");
+      await page.send("Fetch.fulfillRequest", {
+        requestId: held.requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "text/plain" }],
+        body: Buffer.from("ok").toString("base64"),
+      });
+      appsScriptControl.held = null;
+      await waitFor(
+        async () => (await bodyText()).includes("Didn't answer everything? No worries."),
+        "held submission success screen",
+        10000
+      );
+      assert(
+        appsScriptRequests.length === requestIndex + 1,
+        "a duplicate request was sent after the success screen"
+      );
+      return "one request while submitting";
+    });
+
+    appsScriptControl.mode = "block";
+    await page.send("Fetch.disable").catch(() => {});
+
     console.log("\nResponsive checks");
     currentPhase = "responsive";
     for (const [width, height] of [
@@ -1347,6 +2242,21 @@ async function run() {
       const problems = [...runtimeErrors, ...failedRequests].filter((problem) => {
         if (isIgnorableUrl(problem.message)) {
           warnings.push(`Ignored known missing favicon request: ${problem.message}`);
+          return false;
+        }
+        if (
+          problem.phase === "survey failure" &&
+          /Submission Failure:|script\.google\.com/.test(problem.message)
+        ) {
+          if (
+            !warnings.some((warning) =>
+              warning.startsWith("Ignored expected simulated survey failure")
+            )
+          ) {
+            warnings.push(
+              "Ignored expected simulated survey failure from the offline Apps Script interception test."
+            );
+          }
           return false;
         }
         return true;

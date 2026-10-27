@@ -16,6 +16,7 @@ const links = [
   { href: "/closerlook", label: "CloserLook@ Workspace" },
   { href: "/top10-poc", label: "Top 10 Ways to Engage" },
   { href: "/open-items", label: "OpenItems" },
+  { href: "/survey-poc", label: "TUC Survey" },
 ];
 
 const TucSkipNav = () => {
